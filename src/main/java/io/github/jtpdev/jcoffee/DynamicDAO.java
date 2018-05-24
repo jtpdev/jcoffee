@@ -16,8 +16,7 @@ import java.util.Date;
 
 import io.github.jtpdev.jcoffee.annotations.Name;
 import io.github.jtpdev.jcoffee.annotations.NoColumn;
-import io.github.jtpdev.jcoffee.exs.JCoffeeException;
-import io.github.jtpdev.jcoffee.exs.JCoffeeExceptionType;
+import io.github.jtpdev.jcoffee.interfaces.JCoffeeEntity;
 import io.github.jtpdev.jcoffee.utils.Logger;
 import io.github.jtpdev.jcoffee.utils.LoggerMessage;
 
@@ -26,10 +25,12 @@ import io.github.jtpdev.jcoffee.utils.LoggerMessage;
  *
  * @param <T>
  */
-public class DynamicDAO<T> {
+public class DynamicDAO<T extends JCoffeeEntity> {
 
-	private Connection connection;
-	private T entity;
+	private JCoffeeValidation<T> validation;
+	Connection connection;
+	T entity;
+	
 
 	public DynamicDAO() {
 		this(null, null);
@@ -38,6 +39,7 @@ public class DynamicDAO<T> {
 	public DynamicDAO(Connection connection, T entity) {
 		this.connection = connection;
 		this.entity = entity;
+		validation = new JCoffeeValidation<T>(this);
 	}
 
 	public void setConnection(Connection connection) {
@@ -49,24 +51,38 @@ public class DynamicDAO<T> {
 	}
 
 	public T save() throws Exception {
-		Logger.show(LoggerMessage.SAVE_START);
-		verifyConnection();
-		String sql = sqlMaker();
-		PreparedStatement ps = connection.prepareStatement(sql);
-		Field[] fields = entity.getClass().getFields();
-		for (int i = 0; i < fields.length; i++) {
-			Field field = fields[i];
-			if (!field.isAnnotationPresent(NoColumn.class)) {
-				field.setAccessible(true);
-				Object value = field.get(this.entity);
-				setStringValue(ps, i, value);
-				setNumberValue(ps, i, value);
-				setCharValue(ps, i, value);
-				setDateTimeValue(ps, i, value);
+		validation.verifyConnection();
+		validation.verifyEntity();
+		if (this.entity.getId() == null) {
+			Logger.show(LoggerMessage.SAVE_START);
+			String sql = saveSqlMaker();
+			PreparedStatement ps = connection.prepareStatement(sql);
+			Field[] fields = entity.getClass().getFields();
+			for (int i = 0; i < fields.length; i++) {
+				Field field = fields[i];
+				if (!field.isAnnotationPresent(NoColumn.class)) {
+					field.setAccessible(true);
+					Object value = field.get(this.entity);
+					setStringValue(ps, i, value);
+					setNumberValue(ps, i, value);
+					setCharValue(ps, i, value);
+					setDateTimeValue(ps, i, value);
+				}
 			}
+			Logger.show(LoggerMessage.SAVE_END);
+		} else {
+			update();
 		}
-		Logger.show(LoggerMessage.SAVE_END);
+		
 		return entity;
+	}
+	
+	public T update() throws Exception {
+		validation.verifyConnection();
+		validation.verifyEntity();
+		validation.verifyId();
+		// TODO update here
+		return null;
 	}
 
 	private void setDateTimeValue(PreparedStatement ps, int i, Object value) throws SQLException {
@@ -126,27 +142,14 @@ public class DynamicDAO<T> {
 		}
 	}
 
-	private void verifyConnection() throws SQLException {
-		if (this.connection == null) {
-			throw new JCoffeeException(JCoffeeExceptionType.CONNECTION_IS_NULL);
-		} else if (this.connection.isClosed()) {
-			throw new JCoffeeException(JCoffeeExceptionType.CONNECTION_IS_CLOSED);
-		}
-
-		if (this.entity == null) {
-			throw new JCoffeeException(JCoffeeExceptionType.ENTITY_IS_NULL);
-		}
-
-	}
-
-	private String sqlMaker() throws Exception {
+	private String saveSqlMaker() throws Exception {
 		String sql = "insert into ";
 		Class<? extends Object> clazz = entity.getClass();
 		String tableName = getTableName(clazz);
 		sql += tableName + "\r\n (";
 		Integer count = 0;
 		for (Field field : clazz.getFields()) {
-			if (!field.isAnnotationPresent(NoColumn.class)) {
+			if (!field.isAnnotationPresent(NoColumn.class) && field.getName().equals("serialVersionUID")) {
 				String column = field.getName();
 				if (field.isAnnotationPresent(Name.class)) {
 					column = field.getAnnotation(Name.class).value();

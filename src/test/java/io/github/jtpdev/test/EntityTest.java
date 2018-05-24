@@ -4,13 +4,16 @@ import java.util.Date;
 
 import io.github.jtpdev.jcoffee.annotations.Name;
 import io.github.jtpdev.jcoffee.annotations.NoColumn;
+import io.github.jtpdev.jcoffee.interfaces.JCoffeeEntity;
 
 /**
  * @author Jimmy Porto
  *
  */
 @Name("entity")
-public class EntityTest {
+public class EntityTest implements JCoffeeEntity<Integer> {
+	
+	private static final long serialVersionUID = 1L;
 	
 	@Name("id")
 	private Integer idEntity;
@@ -49,6 +52,9 @@ public class EntityTest {
 	}
 	public void setNoColumn(String noColumn) {
 		this.noColumn = noColumn;
+	}
+	public Integer getId() {
+		return getIdEntity();
 	}
 
 }
