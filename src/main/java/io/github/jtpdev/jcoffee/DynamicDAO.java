@@ -14,9 +14,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Date;
 
-import io.github.jtpdev.jcoffee.annotations.Name;
+import io.github.jtpdev.jcoffee.annotations.Id;
 import io.github.jtpdev.jcoffee.annotations.NoColumn;
-import io.github.jtpdev.jcoffee.interfaces.JCoffeeEntity;
 import io.github.jtpdev.jcoffee.utils.Logger;
 import io.github.jtpdev.jcoffee.utils.LoggerMessage;
 
@@ -25,12 +24,12 @@ import io.github.jtpdev.jcoffee.utils.LoggerMessage;
  *
  * @param <T>
  */
-public class DynamicDAO<T extends JCoffeeEntity> {
+public class DynamicDAO<T> {
 
-	private JCoffeeValidation<T> validation;
+	private JCoffeeSQLMaker<T> sqlMaker;
+	JCoffeeValidation<T> validation;
 	Connection connection;
 	T entity;
-	
 
 	public DynamicDAO() {
 		this(null, null);
@@ -40,6 +39,7 @@ public class DynamicDAO<T extends JCoffeeEntity> {
 		this.connection = connection;
 		this.entity = entity;
 		validation = new JCoffeeValidation<T>(this);
+		sqlMaker = new JCoffeeSQLMaker<T>(this);
 	}
 
 	public void setConnection(Connection connection) {
@@ -53,9 +53,10 @@ public class DynamicDAO<T extends JCoffeeEntity> {
 	public T save() throws Exception {
 		validation.verifyConnection();
 		validation.verifyEntity();
-		if (this.entity.getId() == null) {
+		Object idValue = getIdvalue();
+		if (idValue == null) {
 			Logger.show(LoggerMessage.SAVE_START);
-			String sql = saveSqlMaker();
+			String sql = sqlMaker.saveSqlMaker();
 			PreparedStatement ps = connection.prepareStatement(sql);
 			Field[] fields = entity.getClass().getFields();
 			for (int i = 0; i < fields.length; i++) {
@@ -63,20 +64,119 @@ public class DynamicDAO<T extends JCoffeeEntity> {
 				if (!field.isAnnotationPresent(NoColumn.class)) {
 					field.setAccessible(true);
 					Object value = field.get(this.entity);
-					setStringValue(ps, i, value);
-					setNumberValue(ps, i, value);
-					setCharValue(ps, i, value);
-					setDateTimeValue(ps, i, value);
+					setValue(ps, i, value);
 				}
 			}
-			Logger.show(LoggerMessage.SAVE_END);
-		} else {
-			update();
+			if (ps.executeUpdate() > 0) {
+				sql = sqlMaker.selectLastSqlMaker();
+				setValue(ps, 1, idValue);
+				ResultSet rs = ps.executeQuery();
+				while (rs.next()) {
+					getValue(idValue, rs);
+
+				}
+			}
 		}
-		
-		return entity;
+		Logger.show(LoggerMessage.SAVE_END);
 	}
-	
+
+	private void getValue(Object idValue, ResultSet rs) throws IllegalAccessException, SQLException {
+		if(getStringValue(idValue, rs);
+		getNumberValue(idValue, rs);
+		getCharValue(idValue, rs);
+		getDateValue(idValue, rs);
+	}
+
+	private void getDateValue(Object idValue, ResultSet rs) throws IllegalAccessException, SQLException {
+		if (idValue instanceof Date) {
+			if (idValue instanceof Timestamp) {
+				return getFieldId().set(entity, rs.getTimestamp(1));
+			} else if (idValue instanceof Time) {
+				return getFieldId().set(entity, rs.getTime(1));
+			} else {
+				return getFieldId().set(entity, rs.getDate(1));
+			}
+		}
+		if (idValue instanceof LocalDate) {
+			return getFieldId().set(entity, rs.getDate(1).toLocalDate());
+		}
+		if (idValue instanceof LocalDateTime) {
+			return getFieldId().set(entity, rs.getTimestamp(1).toLocalDateTime());
+		}
+		if (idValue instanceof LocalTime) {
+			return getFieldId().set(entity, rs.getTime(1).toLocalTime());
+		}
+	}
+
+	private void getCharValue(Object idValue, ResultSet rs) throws SQLException, IllegalAccessException {
+		if (idValue instanceof Character) {
+			String value = rs.getString(1);
+			if (value != null)
+				return getFieldId().set(entity, value.charAt(0));
+		}
+	}
+
+	private void getNumberValue(Object idValue, ResultSet rs) throws IllegalAccessException, SQLException {
+		if (idValue instanceof Number) {
+			if (idValue instanceof Integer) {
+				return getFieldId().set(entity, rs.getInt(1));
+			} else if (idValue instanceof Short) {
+				return getFieldId().set(entity, rs.getShort(1));
+			} else if (idValue instanceof Long) {
+				return getFieldId().set(entity, rs.getLong(1));
+			} else if (idValue instanceof BigDecimal) {
+				return getFieldId().set(entity, rs.getBigDecimal(1));
+			} else if (idValue instanceof Double) {
+				return getFieldId().set(entity, rs.getDouble(1));
+			} else if (idValue instanceof Float) {
+				return getFieldId().set(entity, rs.getFloat(1));
+			} else if (idValue instanceof Byte) {
+				return getFieldId().set(entity, rs.getByte(1));
+			} else if (idValue instanceof BigInteger) {
+				return getFieldId().set(entity, BigInteger.valueOf(rs.getLong(1)));
+			} else {
+				return getFieldId().set(entity, rs.getString(1));
+			}
+		}
+	}else
+
+	{
+		update();
+	}
+
+	return entity;
+	}
+
+	private void getStringValue(Object idValue, ResultSet rs) throws IllegalAccessException, SQLException {
+		if (idValue instanceof String) {
+			return getFieldId().set(entity, rs.getString(1));
+		}
+	}
+
+	private void setValue(PreparedStatement ps, int i, Object value) throws SQLException {
+		setStringValue(ps, i, value);
+		setNumberValue(ps, i, value);
+		setCharValue(ps, i, value);
+		setDateTimeValue(ps, i, value);
+	}
+
+	private Object getIdvalue() throws IllegalAccessException {
+		Field id = getFieldId();
+		id.setAccessible(true);
+		Object idValue = id.get(entity);
+		return idValue;
+	}
+
+	private Field getFieldId() {
+		Field id = null;
+		for (Field field : this.entity.getClass().getFields()) {
+			if (field.isAnnotationPresent(Id.class)) {
+				id = field;
+			}
+		}
+		return id;
+	}
+
 	public T update() throws Exception {
 		validation.verifyConnection();
 		validation.verifyEntity();
@@ -140,38 +240,6 @@ public class DynamicDAO<T extends JCoffeeEntity> {
 				ps.setString(i + 1, value.toString());
 			}
 		}
-	}
-
-	private String saveSqlMaker() throws Exception {
-		String sql = "insert into ";
-		Class<? extends Object> clazz = entity.getClass();
-		String tableName = getTableName(clazz);
-		sql += tableName + "\r\n (";
-		Integer count = 0;
-		for (Field field : clazz.getFields()) {
-			if (!field.isAnnotationPresent(NoColumn.class) && field.getName().equals("serialVersionUID")) {
-				String column = field.getName();
-				if (field.isAnnotationPresent(Name.class)) {
-					column = field.getAnnotation(Name.class).value();
-				}
-				sql = String.join(", ", sql, column);
-				count++;
-			}
-		}
-		sql += ")\r\n values (";
-		for (int i = 0; i < count; i++) {
-			sql = String.join(", ", sql, "?");
-		}
-		sql += ")";
-		return sql;
-	}
-
-	private String getTableName(Class<? extends Object> clazz) {
-		String tableName = clazz.getSimpleName().toLowerCase();
-		if (clazz.isAnnotationPresent(Name.class)) {
-			tableName = clazz.getAnnotation(Name.class).value().toLowerCase();
-		}
-		return tableName;
 	}
 
 	public void close() throws SQLException {
